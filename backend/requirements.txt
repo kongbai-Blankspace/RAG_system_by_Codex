@@ -1,0 +1,14 @@
+﻿fastapi
+uvicorn
+sqlmodel
+langchain
+langchain-openai
+langchain-community
+langchain-text-splitters
+langgraph
+faiss-cpu
+PyPDF2
+pytest
+pydantic-settings
+python-multipart
+pdfminer.six
