@@ -1,6 +1,8 @@
 # RAG System by Codex
 
 面向企业知识问答场景的端到端 RAG 示例，包含 FastAPI 后端、LangChain/LangGraph 推理流程与 Vite 前端。项目支持文档上传校验、向量库构建、基于检索增强的对话体验，可作为团队二次开发与学习的基础模板。
+## 结果如图
+<img width="1893" height="884" alt="5ee776c07280740238aa069480517d03" src="https://github.com/user-attachments/assets/b73a86d1-ff81-467d-b494-b53c6567d6a2" />
 
 ## ✨ 功能亮点
 - 文档上传 + 校验：限制扩展名/大小/文本长度，自动持久化校验结果。
@@ -76,3 +78,5 @@ docs/           # 项目与接口文档
 4. 更新文档（`docs/` 与 README）说明功能与用法。
 
 如对项目有疑问或建议，欢迎提交 Issue/PR，一起完善企业级 RAG 解决方案。
+
+
