@@ -1,0 +1,613 @@
+﻿openapi: 3.0.3
+info:
+  title: RAG Local Knowledge Base Backend API
+  version: 1.2.0
+  description: |
+    该 OpenAPI 规范覆盖“RAG 本地知识库问答引擎”前端所需的全部后端能力：
+      - 文档上传、数据集校验、任务状态查询。
+      - 向量库配置、构建、状态轮询与召回测试。
+      - 多会话聊天、检索增强回答与引用片段返回。
+    服务在读取数据集时会执行格式校验，仅 txt / md / pdf 且可解析的内容会进入流程，其余以明确错误返回。
+  contact:
+    name: RAG Platform Team
+    email: rag-support@example.com
+servers:
+  - url: http://localhost:9000
+    description: 本地开发环境
+  - url: https://staging.rag.example.com
+    description: 预发环境
+  - url: https://rag.example.com
+    description: 生产环境
+security:
+  - bearerAuth: []
+tags:
+  - name: Documents
+    description: 文档上传、校验与任务管理
+  - name: VectorStores
+    description: 向量库配置、构建与检索
+  - name: Chat
+    description: 会话管理与问答流程
+paths:
+  /api/v1/documents:
+    post:
+      tags: [Documents]
+      summary: 上传文档并执行数据集校验
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 支持 `.txt`、`.md`、`.pdf`，大小 ≤ 50MB。
+      responses:
+        '201':
+          description: 文档接收成功，返回任务信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadDocumentResponse'
+        '400':
+          description: 文档校验失败（格式/大小/解析错误）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataValidationError'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '415':
+          description: 不支持的媒体类型
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/documents/{taskId}:
+    get:
+      tags: [Documents]
+      summary: 查询文档任务状态及校验明细
+      operationId: getDocumentTask
+      parameters:
+        - $ref: '#/components/parameters/TaskIdPath'
+      responses:
+        '200':
+          description: 文档任务状态详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTaskStatusResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/vector-stores:
+    post:
+      tags: [VectorStores]
+      summary: 基于已通过校验的文档任务创建向量库
+      operationId: createVectorStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVectorStoreRequest'
+      responses:
+        '202':
+          description: 向量库构建任务受理，返回任务信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateVectorStoreResponse'
+        '400':
+          description: 文档任务尚未完成或配置不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/vector-stores/{storeId}:
+    get:
+      tags: [VectorStores]
+      summary: 获取向量库详情
+      operationId: getVectorStore
+      parameters:
+        - $ref: '#/components/parameters/StoreIdPath'
+      responses:
+        '200':
+          description: 向量库基本信息与配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorStore'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/vector-stores/{storeId}/tasks/{taskId}:
+    get:
+      tags: [VectorStores]
+      summary: 查询向量库构建任务状态
+      operationId: getVectorStoreTask
+      parameters:
+        - $ref: '#/components/parameters/StoreIdPath'
+        - $ref: '#/components/parameters/TaskIdPath'
+      responses:
+        '200':
+          description: 构建进度与状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorStoreTaskStatusResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/vector-stores/{storeId}/recall:
+    post:
+      tags: [VectorStores]
+      summary: 对指定向量库执行召回测试
+      operationId: recallFromVectorStore
+      parameters:
+        - $ref: '#/components/parameters/StoreIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecallRequest'
+      responses:
+        '200':
+          description: 召回结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecallResponse'
+        '400':
+          description: 请求参数错误或向量库未就绪
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/chat/sessions:
+    get:
+      tags: [Chat]
+      summary: 获取会话列表（分页）
+      operationId: listChatSessions
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PageSizeQuery'
+      responses:
+        '200':
+          description: 会话分页数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSessionListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Chat]
+      summary: 创建新的聊天会话
+      operationId: createChatSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChatSessionRequest'
+      responses:
+        '201':
+          description: 会话创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSession'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/chat/sessions/{sessionId}:
+    get:
+      tags: [Chat]
+      summary: 获取指定会话及其消息
+      operationId: getChatSession
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        '200':
+          description: 会话详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSessionDetailResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Chat]
+      summary: 删除会话
+      operationId: deleteChatSession
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        '204':
+          description: 删除成功，无响应体
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/chat/sessions/{sessionId}/messages:
+    post:
+      tags: [Chat]
+      summary: 向会话发送消息并获取 RAG 回答
+      operationId: sendChatMessage
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendChatMessageRequest'
+      responses:
+        '200':
+          description: 助手回复（含引用片段）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          description: 参数不合法或指定向量库未就绪
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TaskIdPath:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 文档任务 ID
+    StoreIdPath:
+      name: storeId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 向量库 ID
+    SessionIdPath:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 会话 ID
+    PageQuery:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 页码
+    PageSizeQuery:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: 每页数量
+  responses:
+    Unauthorized:
+      description: 未授权或 Token 无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 请求资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: 服务器内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    UploadDocumentResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+        statusUrl:
+          type: string
+          description: 轮询任务状态的地址
+    DataValidationError:
+      type: object
+      properties:
+        code:
+          type: string
+          example: DATASET_INVALID
+        message:
+          type: string
+          example: 文档校验失败
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              rule:
+                type: string
+                example: format_check
+              passed:
+                type: boolean
+              detail:
+                type: string
+                example: 仅允许 txt/md/pdf
+    DocumentTaskStatusResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+          enum: [pending, validating, processing, success, failed]
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+          description: 单位字节
+        validation:
+          type: object
+          properties:
+            passed:
+              type: boolean
+            rules:
+              type: array
+              items:
+                type: object
+                properties:
+                  rule:
+                    type: string
+                    example: min_length
+                  passed:
+                    type: boolean
+                  detail:
+                    type: string
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateVectorStoreRequest:
+      type: object
+      required: [documentTaskId, config]
+      properties:
+        documentTaskId:
+          type: string
+        config:
+          $ref: '#/components/schemas/VectorStoreConfig'
+    CreateVectorStoreResponse:
+      type: object
+      properties:
+        storeId:
+          type: string
+        taskId:
+          type: string
+        statusUrl:
+          type: string
+    VectorStoreConfig:
+      type: object
+      required: [name, chunkSize, overlap, topK]
+      properties:
+        name:
+          type: string
+        chunkSize:
+          type: integer
+          minimum: 128
+          maximum: 4096
+        overlap:
+          type: integer
+          minimum: 0
+          maximum: 1024
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 20
+    VectorStore:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [building, ready, failed]
+        documentTaskId:
+          type: string
+        config:
+          $ref: '#/components/schemas/VectorStoreConfig'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    VectorStoreTaskStatusResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+        status:
+          type: string
+          enum: [queued, embedding, indexing, success, failed]
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        message:
+          type: string
+    RecallRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        topK:
+          type: integer
+          default: 3
+          minimum: 1
+          maximum: 10
+        withContent:
+          type: boolean
+          default: true
+    RecallResponse:
+      type: object
+      properties:
+        storeId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentSnippet'
+    DocumentSnippet:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        similarity:
+          type: number
+          format: float
+        content:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    ChatSession:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ChatSessionListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatSession'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    CreateChatSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: 会话名称；若未提供后端自动生成
+    ChatSessionDetailResponse:
+      type: object
+      properties:
+        session:
+          $ref: '#/components/schemas/ChatSession'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentSnippet'
+    SendChatMessageRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        vectorStoreId:
+          type: string
+          description: 指定向量库 ID，未传则默认使用最新可用向量库
+    ChatMessageResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        traceId:
+          type: string
+  x-error-codes:
+    general:
+      - code: BAD_REQUEST
+        message: 请求参数不合法
+      - code: UNAUTHORIZED
+        message: 未授权访问
+      - code: NOT_FOUND
+        message: 资源不存在
+      - code: INTERNAL_ERROR
+        message: 服务器内部错误
+    documents:
+      - code: DATASET_INVALID
+        message: 文件格式或内容不符合要求
+      - code: DATASET_TOO_LARGE
+        message: 文件大小超出限制
+    vectorStores:
+      - code: DOCUMENT_TASK_NOT_READY
+        message: 文档任务未完成，无法创建向量库
+      - code: VECTOR_STORE_BUILD_FAILED
+        message: 向量库构建失败
+    chat:
+      - code: SESSION_CLOSED
+        message: 会话已关闭
+      - code: VECTOR_STORE_NOT_READY
+        message: 指定向量库未就绪
